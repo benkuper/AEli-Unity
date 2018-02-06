@@ -7,12 +7,22 @@ using UnityOSC;
 public class BodyTracker : Controllable
 {
     [OSCProperty]
-    public float smoothing;
-
+    public bool sendOSC;
+    [OSCProperty]
+    [Range(1, 60)]
+    public int sendFreq;
     [OSCProperty]
     public string remoteHost;
     [OSCProperty]
     public int remotePort;
+
+    float lastUpdateTime;
+
+
+
+    [OSCProperty]
+    [Range(0,1)]
+    public float smoothing;
 
     [Header("Cleaning")]
     public float minRealHeadY;
@@ -21,26 +31,40 @@ public class BodyTracker : Controllable
     BodySourceManager bsm;
 
     Dictionary<ulong, Body> bodies;
-    public Body lastBody;
+    public Body closestBody;
 
-    Transform headT;
-    Transform bodyT;
-    Transform leftHandT;
-    Transform rightHandT;
+    TransformSender headT;
+    TransformSender bodyT;
+    TransformSender leftHandT;
+    TransformSender rightHandT;
     Transform[] joints;
+
+    [OSCProperty]
+    [Range(0,10)]
+    public float handSpeedThreshold;
+    [OSCProperty]
+    [Range(0, 10)]
+    public float bodySpeedThreshold;
+
+    Vector3 lastHandPos;
+    Vector3 lastBodyPos;
+    float handSpeeds;
+    float bodySpeed;
+
     Vector3 spineShoulder;
 
     LineRenderer[] lr;
 
-    public bool sendOSC;
     public Transform origin;
     
+    [OSCProperty]
     public bool bodyIsTracked;
     bool lastBodyIsTracked;
 
+
     [OSCProperty]
     public bool simulateTouch;
-    bool lastSimulateTouch;
+    public bool lastSimulateTouch;
 
     [OSCProperty]
     public bool simulateBodyIsTracked;
@@ -52,19 +76,21 @@ public class BodyTracker : Controllable
     Vector3 relTargetLH;
     Vector3 relTargetRH;
 
-    
+    float angle;
+
+    public LampMoodController mood;
 
     void Start()
     {
         bsm = GetComponent<BodySourceManager>();
         bodies = new Dictionary<ulong, Body>();
 
-        headT = transform.Find("Head");
-        bodyT = transform.Find("Body");
-        leftHandT = transform.Find("LeftHand");
-        rightHandT = transform.Find("RightHand");
+        headT = transform.Find("Head").GetComponent<TransformSender>();
+        bodyT = transform.Find("Body").GetComponent<TransformSender>();
+        leftHandT = transform.Find("LeftHand").GetComponent<TransformSender>();
+        rightHandT = transform.Find("RightHand").GetComponent<TransformSender>();
 
-        joints = new Transform[] { headT, bodyT, leftHandT, rightHandT };
+        joints = new Transform[] { headT.transform, bodyT.transform, leftHandT.transform, rightHandT.transform };
         lr = new LineRenderer[joints.Length];
         for (int i = 0; i < joints.Length; i++) lr[i] = joints[i].GetComponent<LineRenderer>();
 
@@ -85,47 +111,127 @@ public class BodyTracker : Controllable
 
         processBodies();
 
-        if(lastBody != null)
+        if (closestBody != null && !closestBody.IsTracked)
         {
-            bodyIsTracked = true;
-            headT.transform.localPosition = getLocalJointPos(lastBody, JointType.Head);
-            bodyT.transform.localPosition = getLocalJointPos(lastBody, JointType.SpineBase);
-            leftHandT.transform.localPosition = getLocalJointPos(lastBody, JointType.HandLeft);
-            rightHandT.transform.localPosition = getLocalJointPos(lastBody, JointType.HandRight);
-            spineShoulder = getAbsoluteJointPos(lastBody, JointType.SpineShoulder);
-            bodyTarget.transform.position = new Vector3(bodyT.transform.position.x, 0.01f, bodyT.transform.position.z);
-            if (sendOSC) sendFeedback();
+            Debug.LogWarning("Force body null");
+            closestBody = null;
+        }
 
+        closestBody = null;
+        float dist = 20;
+        foreach (KeyValuePair<ulong,Body> b in bodies)
+        {
+            float d = getLocalJointPos(b.Value, JointType.SpineBase).magnitude;
+            if (d < dist)
+            {
+                closestBody = b.Value;
+                dist = d;
+            }
+        }
+
+        bool shouldSend = false;
+        float deltaUpdateTime = Time.time - lastUpdateTime;
+
+        if (Time.time > lastUpdateTime + 1.0f / sendFreq)
+        {
+            lastUpdateTime = Time.time;
+            shouldSend = true;
+        }
+
+        if (closestBody != null)
+        {
+            headT.targetLocalPosition = getLocalJointPos(closestBody, JointType.Head);
+            bodyT.targetLocalPosition = getLocalJointPos(closestBody, JointType.SpineBase);
+            leftHandT.targetLocalPosition = getLocalJointPos(closestBody, JointType.HandLeft);
+            rightHandT.targetLocalPosition = getLocalJointPos(closestBody, JointType.HandRight);
+            spineShoulder = getAbsoluteJointPos(closestBody, JointType.SpineShoulder);
+            bodyTarget.transform.position = new Vector3(bodyT.transform.position.x, 0.01f, bodyT.transform.position.z);
+
+            if (sendOSC && shouldSend) sendFeedback();
+
+            if (bodyIsTracked && shouldSend)
+            {
+
+                bodySpeed = Vector3.Distance(bodyT.transform.localPosition, lastBodyPos) / deltaUpdateTime;
+                handSpeeds = Vector3.Distance(rightHandT.transform.localPosition, lastHandPos) / deltaUpdateTime;
+
+
+                if (bodySpeed > bodySpeedThreshold) mood.sendMood(LampMoodController.DELIGHTED, .4f);
+                if (handSpeeds > handSpeedThreshold) mood.sendMood(LampMoodController.HAPPY, .4f);
+            }
+
+            lastBodyPos = bodyT.transform.localPosition;
+            lastHandPos = rightHandT.transform.localPosition;
+
+            Vector2 groundBody = new Vector2(bodyTarget.position.x, bodyTarget.position.z);
+            Vector2 groundOrigin = new Vector2(origin.position.x+1, origin.position.z);
+            angle = Vector2.SignedAngle(groundOrigin, groundBody);
+            DataFeedback.sendAngle(angle);
+
+            bodyIsTracked = true;
         }
         else
         {
-            bodyIsTracked = simulateBodyIsTracked;
-            spineShoulder = Vector3.Lerp(headT.position, bodyT.position, .3f);
+            spineShoulder = Vector3.Lerp(headT.transform.position, bodyT.transform.position, .3f);
 
-            if(Input.GetMouseButton(0))
+            if (Input.GetMouseButton(0))
             {
                 Ray r = Camera.main.ScreenPointToRay(Input.mousePosition);
                 RaycastHit hit;
-                if(Physics.Raycast(r,out hit))
+                if (Physics.Raycast(r, out hit))
                 {
                     bodyTarget.position = new Vector3(hit.point.x, bodyTarget.position.y, hit.point.z);
                     bodyTarget.LookAt(new Vector3(origin.position.x, bodyTarget.position.y, origin.position.z));
 
-                    bodyT.position = bodyTarget.TransformPoint(relTargetBody);
-                    headT.position = bodyTarget.TransformPoint(relTargetHead);
-                    leftHandT.position = bodyTarget.TransformPoint(relTargetLH);
-                    rightHandT.position = bodyTarget.TransformPoint(relTargetRH);
-                    if (sendOSC && bodyIsTracked) sendFeedback();
+                    bodyT.targetLocalPosition = transform.InverseTransformPoint(bodyTarget.TransformPoint(relTargetBody));
+                    headT.targetLocalPosition = transform.InverseTransformPoint(bodyTarget.TransformPoint(relTargetHead));
+                    leftHandT.targetLocalPosition = transform.InverseTransformPoint(bodyTarget.TransformPoint(relTargetLH));
+                    rightHandT.targetLocalPosition = transform.InverseTransformPoint(bodyTarget.TransformPoint(relTargetRH));
+
+                    if (sendOSC && bodyIsTracked && shouldSend) sendFeedback();
+
+                    
+                    Vector2 groundBody = new Vector2(bodyTarget.position.x, bodyTarget.position.z);
+                    Vector2 groundOrigin = new Vector2(origin.position.x+1, origin.position.z);
+                    angle = Vector2.SignedAngle(groundOrigin, groundBody);
+                    DataFeedback.sendAngle(angle);
                 }
             }
 
-        }
+            if (bodyIsTracked && shouldSend)
+            {
 
+                bodySpeed = Vector3.Distance(bodyT.transform.localPosition, lastBodyPos) / deltaUpdateTime;
+                handSpeeds = Vector3.Distance(rightHandT.transform.localPosition, lastHandPos) / deltaUpdateTime  ;
+
+                if (bodySpeed > bodySpeedThreshold) mood.sendMood(LampMoodController.DELIGHTED, .4f);
+                if (handSpeeds > handSpeedThreshold) mood.sendMood(LampMoodController.HAPPY, .4f);
+            }
+
+            lastBodyPos = bodyT.transform.localPosition;
+            lastHandPos = rightHandT.transform.localPosition;
+
+            bodyIsTracked = simulateBodyIsTracked;
+        }
+       
 
         if(lastBodyIsTracked != bodyIsTracked)
         {
             lastBodyIsTracked = bodyIsTracked;
-            if(sendOSC) sendTrackFeedback();
+            if (bodyIsTracked) mood.sendMood(LampMoodController.RELAXED, .5f);
+            else mood.sendMood(LampMoodController.OFF, .7f);
+            bodyTarget.GetComponent<Renderer>().material.color = bodyIsTracked ? (simulateTouch ? Color.blue : Color.green) : Color.red;
+
+            if (sendOSC) sendTrackFeedback();
+            DataFeedback.sendTracked(bodyIsTracked);
+        }
+
+        if(!bodyIsTracked)
+        {
+            mood.sendMood(LampMoodController.OFF, .5f);
+        }else
+        {
+            mood.sendMood(LampMoodController.RELAXED, .15f);
         }
 
         if (Input.GetKeyDown(KeyCode.T)) simulateTouch = !simulateTouch;
@@ -141,7 +247,10 @@ public class BodyTracker : Controllable
         {
             lastSimulateTouch = simulateTouch;
             if (sendOSC) sendTouchFeedback();
-            bodyTarget.GetComponent<Renderer>().material.color = simulateBodyIsTracked ? (simulateTouch ? Color.blue : Color.green) : Color.red;
+            TouchHandler.instance.isTouched = simulateTouch;
+            mood.sendMood(LampMoodController.DELIGHTED, .8f);
+            bodyTarget.GetComponent<Renderer>().material.color = bodyIsTracked ? (simulateTouch ? Color.blue : Color.green) : Color.red;
+
         }
 
         foreach (LineRenderer r in lr) r.SetPositions(new Vector3[] { spineShoulder, r.transform.position });
@@ -154,6 +263,7 @@ public class BodyTracker : Controllable
         m.Append<int>(simulateTouch?1:0);
         m.Append(Time.time);
         OSCMaster.sendMessage(m, remoteHost, remotePort);
+
     }
 
     void sendTrackFeedback()
@@ -162,6 +272,7 @@ public class BodyTracker : Controllable
         m.Append<int>(bodyIsTracked ? 1 : 0);
         m.Append(Time.time);
         OSCMaster.sendMessage(m, remoteHost, remotePort);
+
     }
 
     void sendFeedback()
@@ -175,7 +286,7 @@ public class BodyTracker : Controllable
     {
         Debug.Log("Add Body "+b.TrackingId);
         bodies.Add(b.TrackingId, b);
-        lastBody = b;
+        //lastBody = b;
         Debug.Log(" > New body count " + bodies.Count);
     }
 
@@ -188,10 +299,10 @@ public class BodyTracker : Controllable
     {
         Debug.Log("Remove Body "+ trackingId);
         bodies.Remove(trackingId);
-        if(lastBody.TrackingId == trackingId)
-        {
-            lastBody = null;
-        }
+       // if(lastBody.TrackingId == trackingId)
+        //{
+        //    lastBody = null;
+       // }
         Debug.Log(" > New body count : " + bodies.Count);
     }
 
@@ -220,14 +331,12 @@ public class BodyTracker : Controllable
         Body[] newBodies = bsm.GetData();
         if (newBodies != null)
         {
-            Debug.Log(newBodies.Length);
             List<Body> validBodies = new List<Body>();
 
             foreach(Body b in newBodies)
             {
                 if (isBodyValid(b)) validBodies.Add(b);
             }
-
 
             List<ulong> bodiesToRemove = new List<ulong>();
             foreach (KeyValuePair<ulong, Body> b in bodies)

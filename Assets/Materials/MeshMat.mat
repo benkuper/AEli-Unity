@@ -7,7 +7,7 @@ Material:
   m_PrefabParentObject: {fileID: 0}
   m_PrefabInternal: {fileID: 0}
   m_Name: MeshMat
-  m_Shader: {fileID: 4800000, guid: 06ecb1ac39c6ca645b9eaf9e5adc866d, type: 3}
+  m_Shader: {fileID: 4800000, guid: b685fc76431a6b743b86d4c6a1b08146, type: 3}
   m_ShaderKeywords: _MICROSPLAT
   m_LightmapFlags: 4
   m_EnableInstancingVariants: 0
@@ -63,7 +63,7 @@ Material:
         m_Scale: {x: 1, y: 1}
         m_Offset: {x: 0, y: 0}
     - _MainTex:
-        m_Texture: {fileID: 2800000, guid: d1beb0d7f7844e140bae3a6d270ad0c8, type: 3}
+        m_Texture: {fileID: 2800000, guid: 7a31f2e34ebdadc4a9bbebe8379e6bc6, type: 3}
         m_Scale: {x: 1, y: 1}
         m_Offset: {x: 0, y: 0}
     - _MetallicGlossMap:
@@ -123,27 +123,29 @@ Material:
     - _Contrast: 0.4
     - _Cutoff: 0.5
     - _DetailNormalMapScale: 1
+    - _DistMax: 3
+    - _DistMin: 0
     - _DstBlend: 0
     - _GlossMapScale: 1
     - _Glossiness: 0.5
     - _GlossyReflections: 1
     - _HeightMax: 2.03
     - _HeightMin: 0
-    - _MaxX: 19.2
-    - _MaxY: 13.53
-    - _MaxZ: 6.59
+    - _MaxX: 6.43
+    - _MaxY: 8.32
+    - _MaxZ: 12.68
     - _Metallic: 0
     - _Metallic0: 0
     - _Metallic1: 0
     - _Metallic2: 0
     - _Metallic3: 0
-    - _MinX: -2.09
-    - _MinY: -0.4
-    - _MinZ: -2.44
+    - _MinX: -3
+    - _MinY: 0.07
+    - _MinZ: -5.3
     - _Mode: 0
     - _OcclusionStrength: 1
     - _Parallax: 0.02
-    - _ScaleFactor: 1
+    - _ScaleFactor: -1.01
     - _Smoothness0: 1
     - _Smoothness1: 1
     - _Smoothness2: 1
@@ -156,6 +158,6 @@ Material:
     m_Colors:
     - _Color: {r: 1, g: 1, b: 1, a: 1}
     - _ColorMax: {r: 1, g: 1, b: 1, a: 1}
-    - _ColorMin: {r: 0, g: 0, b: 0, a: 1}
+    - _ColorMin: {r: 1, g: 1, b: 1, a: 1}
     - _EmissionColor: {r: 0, g: 0, b: 0, a: 1}
     - _UVScale: {r: 45, g: 45, b: 0, a: 0}

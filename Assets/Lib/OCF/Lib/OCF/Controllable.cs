@@ -108,6 +108,8 @@ public class Controllable : MonoBehaviour
 
     public virtual void Update() //Warn UI if attribut changes
     {
+        if (Properties == null || Properties.Values == null) return;
+
         var propertiesArray = Properties.Values.ToArray();
 
         for (var i=0 ; i<Properties.Count ; i++)

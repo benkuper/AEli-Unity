@@ -54,7 +54,12 @@ public class UIMaster : MonoBehaviour
 
         if (showDebug)
             Debug.Log("Removing UI for " + dyingControllable.name + "|" + dyingControllable.id);
-        Destroy(_panels[dyingControllable.id]);
+
+        if(_panels.ContainsKey(dyingControllable.id))
+        {
+            Destroy(_panels[dyingControllable.id]);
+        }
+        
         _panels.Remove(dyingControllable.name);
     }
 

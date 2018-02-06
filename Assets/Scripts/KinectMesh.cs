@@ -3,7 +3,7 @@ using System.Collections.Generic;
 using UnityEngine;
 using Windows.Kinect;
 
-public class KinectMesh : MonoBehaviour {
+public class KinectMesh : Controllable {
 
     private KinectSensor _Sensor;
     private DepthFrameReader _Reader;
@@ -20,14 +20,43 @@ public class KinectMesh : MonoBehaviour {
     private const int _DownsampleSize = 2;
     public  float _Scale;
     public Vector3 _Offset;
-    private const int _Speed = 50;
 
+    [OSCProperty]
     [Range(0,1)]
     public float motionSmooth;
 
 
     ColorSpacePoint[] colorSpace;
     CameraSpacePoint[] camSpace;
+
+    [OSCProperty]
+    [Range(-4,4)]
+    public float minX;
+    [OSCProperty]
+    [Range(-4, 4)]
+    public float maxX;
+    [OSCProperty]
+    [Range(0, 3)]
+    public float minY;
+    [OSCProperty]
+    [Range(0,3)]
+    public float maxY;
+    [OSCProperty]
+    [Range(-4, 4)]
+    public float minZ;
+    [OSCProperty]
+    [Range(-4, 4)]
+    public float maxZ;
+    [OSCProperty]   
+    [Range(0,3)]
+    public float minDist;
+    [OSCProperty]
+    [Range(1,6)]
+    public float maxDist;
+    [OSCProperty]
+    [Range(-3,3)]
+    public float scaleFactor;
+
 
     // Use this for initialization
     void Start () {
@@ -52,8 +81,6 @@ public class KinectMesh : MonoBehaviour {
                 _Sensor.Open();
             }
         }
-
-
     }
 
     void CreateMesh(int width, int height)
@@ -103,8 +130,10 @@ public class KinectMesh : MonoBehaviour {
     }
 
     // Update is called once per frame
-    void Update()
+    override public void Update()
     {
+        base.Update();
+
         if (_Sensor == null) return;
 
         if (_Reader != null)
@@ -118,6 +147,17 @@ public class KinectMesh : MonoBehaviour {
                 RefreshData();
             }
         }
+
+        Material m = GetComponent<Renderer>().material;
+        m.SetFloat("_MinX", minX);
+        m.SetFloat("_MaxX", maxX);
+        m.SetFloat("_MinY", minY);
+        m.SetFloat("_MaxY", maxY);
+        m.SetFloat("_MinZ", minZ);
+        m.SetFloat("_MaxZ", maxZ);
+        m.SetFloat("_DistMin", minDist);
+        m.SetFloat("_DistMax", maxDist);
+        m.SetFloat("_ScaleFactor", scaleFactor);
 
         //gameObject.GetComponent<Renderer>().material.mainTexture = _ColorManager.GetColorTexture();
     }

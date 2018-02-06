@@ -7,40 +7,106 @@ public class TransformSender : MonoBehaviour {
 
     public string jointName;
     public Transform origin;
-    float speed;
-    Vector3 lastPos;
+    Vector3 lastSendPos;
+    Vector3 lastRealUpdatePos;
     public Vector3 relPos;
+    public Vector3 groundPos;
 
     public bool includeTimeStamp;
-    bool hasChanged;
+    bool hasChangedSinceLastUpdate;
+    float lastSendTime;
 
-	void Start () {
-		
+    //
+    public bool sendDistAndSpeed;
+    int sendUpdateFPS = 50;
+    float lastSendUpdateTime;
+    public bool sendIdleTime;
+    public float idleSpeedThreshold;
+    float idleTime;
+
+    public float currentSpeed;
+    public float speedSmooth;
+    public float refSpeed;
+
+    BodyTracker tracker;
+
+    //Smoothing
+    public Vector3 targetLocalPosition;
+    Vector3 velocity;
+
+    bool isMoving;
+
+    void Start () {
+        tracker = GetComponentInParent<BodyTracker>();
 	}
 	
 	void Update () {
+        transform.localPosition = Vector3.SmoothDamp(transform.localPosition, targetLocalPosition, ref velocity, tracker.smoothing,10,Time.deltaTime);
+
         Vector3 zOrigin = new Vector3(origin.position.x, 0, origin.position.z);
         relPos = transform.position - zOrigin;
-        speed = Vector3.Distance(relPos,lastPos) / Time.deltaTime;
+        groundPos = new Vector3(transform.position.x, 0, transform.position.z) - zOrigin;
 
-        hasChanged = relPos != lastPos;
-
-        lastPos = new Vector3(relPos.x,relPos.y, relPos.z);
+        if (relPos != lastSendPos) hasChangedSinceLastUpdate = true;
 
 
-	}
+        if (Time.time > lastSendUpdateTime + 1.0f / sendUpdateFPS)
+        {
+            float deltaUpdateTime = (Time.time - lastSendUpdateTime);
+            float targetSpeed = Vector3.Distance(relPos, lastRealUpdatePos) / deltaUpdateTime;
+            if (speedSmooth == 0) currentSpeed = targetSpeed;
+            else currentSpeed = Mathf.SmoothDamp(currentSpeed, targetSpeed, ref refSpeed, speedSmooth);
+
+            if (currentSpeed < idleSpeedThreshold) idleTime += deltaUpdateTime;
+            else idleTime = 0;
+
+            bool nowIsMoving = idleTime > 0;
+
+            if (sendIdleTime)
+            {
+                DataFeedback.sendIdleTime(idleTime);
+                if (isMoving != nowIsMoving)
+                {
+                    DataFeedback.sendIsMoving(nowIsMoving);
+                }
+            }
+
+            isMoving = nowIsMoving;
+
+
+            if (sendDistAndSpeed)
+            {
+                DataFeedback.sendDistance(jointName, groundPos.magnitude);
+                DataFeedback.sendSpeed(jointName, currentSpeed);
+            }
+
+            lastRealUpdatePos = new Vector3(relPos.x, relPos.y, relPos.z);
+            lastSendUpdateTime = Time.time;
+        }
+    }
 
     public void sendOSC(string host, int port)
     {
-        if (!hasChanged) return;
+        if (!hasChangedSinceLastUpdate) return;
 
         OSCMessage m = new OSCMessage("/joint/"+jointName);
         m.Append(relPos.x);
         m.Append(relPos.y);
         m.Append(relPos.z);
+
+        float deltaUpdateTime = Time.time - lastSendTime;
+        float speed = Vector3.Distance(relPos, lastSendPos) / deltaUpdateTime;
         m.Append(speed);
+
+        lastSendTime = Time.time;
+        lastSendPos = new Vector3(relPos.x, relPos.y, relPos.z);
+
+
         if (includeTimeStamp) m.Append(Time.time);
 
         OSCMaster.sendMessage(m, host, port);
+
+        hasChangedSinceLastUpdate = false;
+
     }
 }
